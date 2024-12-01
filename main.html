@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduling Algorithms Simulator</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>Scheduling Algorithms Simulator</h1>
+
+        <!-- Input Form -->
+        <form method="POST" action="/">
+            <div class="form-group">
+                <label for="pid">Process ID:</label>
+                <input type="text" id="pid" name="pid" required>
+            </div>
+            <div class="form-group">
+                <label for="arrival_time">Arrival Time:</label>
+                <input type="number" id="arrival_time" name="arrival_time" required>
+            </div>
+            <div class="form-group">
+                <label for="burst_time">Burst Time:</label>
+                <input type="number" id="burst_time" name="burst_time" required>
+            </div>
+            <div class="form-group">
+                <label for="priority">Priority (optional):</label>
+                <input type="number" id="priority" name="priority">
+            </div>
+            <button type="submit" class="btn">Add Process</button>
+        </form>
+
+        <!-- Process Table -->
+        <h2>Stored Processes</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>PID</th>
+                    <th>Arrival Time</th>
+                    <th>Burst Time</th>
+                    <th>Priority</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for process in processes %}
+                <tr>
+                    <td>{{ process.id }}</td>
+                    <td>{{ process.pid }}</td>
+                    <td>{{ process.arrival_time }}</td>
+                    <td>{{ process.burst_time }}</td>
+                    <td>{{ process.priority if process.priority is not none else "N/A" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Clear Button -->
+        <form method="POST" action="/clear">
+            <button type="submit" class="btn btn-clear">Clear All Processes</button>
+        </form>
+
+        <!-- Scheduling Algorithms -->
+        <h2>Run Scheduling Algorithms</h2>
+        <div class="algorithm-buttons">
+            <button onclick="runAlgorithm('fcfs')" class="btn">Run FCFS</button>
+            <button onclick="runAlgorithm('sjf')" class="btn">Run SJF</button>
+            <button onclick="runAlgorithm('priority')" class="btn">Run Priority</button>
+            <button onclick="runAlgorithm('round_robin')" class="btn">Run Round Robin</button>
+        </div>
+
+        <!-- Time Quantum Input for Round Robin -->
+        <div id="time-quantum-group" style="display: none;">
+            <label for="time-quantum">Time Quantum:</label>
+            <input type="number" id="time-quantum" min="1">
+        </div>
+
+        <!-- Results -->
+        <h2>Scheduling Results</h2>
+        <table id="results-table">
+            <thead>
+                <tr>
+                    <th>PID</th>
+                    <th>Arrival Time</th>
+                    <th>Burst Time</th>
+                    <th>Completion Time</th>
+                    <th>Turnaround Time</th>
+                    <th>Waiting Time</th>
+                </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+        </table>
+
+        <!-- Gantt Chart -->
+        <h2>Gantt Chart (Text Art)</h2>
+        <div id="gantt-chart"></div>
+
+        <!-- Calculations -->
+        <div id="calculations" class="calculations"></div>
+    </div>
+
+    <script>
+        async function runAlgorithm(algorithm) {
+            const timeQuantumInput = document.getElementById("time-quantum");
+
+            if (algorithm === "round_robin") {
+                document.getElementById("time-quantum-group").style.display = "block";
+                const timeQuantum = parseInt(timeQuantumInput.value, 10);
+
+                if (!timeQuantum || timeQuantum < 1) {
+                    alert("Please enter a valid time quantum!");
+                    return;
+                }
+                url = `/schedule/${algorithm}?time_quantum=${timeQuantum}`;
+            } else {
+                document.getElementById("time-quantum-group").style.display = "none";
+                url = `/schedule/${algorithm}`;
+            }
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error("Failed to fetch results.");
+                }
+
+                const results = await response.json();
+                displayResults(results);
+                generateTextGanttChart(results);
+                displayCalculations(results);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function displayResults(results) {
+            const resultsBody = document.getElementById("results-body");
+            resultsBody.innerHTML = "";
+
+            results.forEach((process) => {
+                const row = `
+          <tr>
+            <td>${process.pid}</td>
+            <td>${process.arrival_time}</td>
+            <td>${process.burst_time}</td>
+            <td>${process.completion_time}</td>
+            <td>${process.turnaround_time}</td>
+            <td>${process.waiting_time}</td>
+          </tr>
+        `;
+                resultsBody.innerHTML += row;
+            });
+        }
+
+        function generateTextGanttChart(results) {
+  const ganttChart = document.getElementById("gantt-chart");
+  ganttChart.innerHTML = ""; // Clear previous Gantt chart
+
+  const unitWidth = 2; // Reduced width per unit time
+  let asciiChart = "|"; // For process and idle blocks
+  let timeline = ""; // For timeline markers
+  let currentTime = 0;
+
+  results.forEach((process) => {
+    // Handle idle time
+    const idleTime = process.arrival_time > currentTime ? process.arrival_time - currentTime : 0;
+    if (idleTime > 0) {
+      asciiChart += ` Idle `.padEnd(idleTime * unitWidth, " ") + "|";
+      timeline += `${currentTime}`.padEnd(idleTime * unitWidth, " ");
+      currentTime += idleTime;
+    }
+
+    // Handle process time
+    const processDuration = process.burst_time;
+    asciiChart += ` P${process.pid} `.padEnd(processDuration * unitWidth, " ") + "|";
+    timeline += `${currentTime}`.padEnd(processDuration * unitWidth, " ");
+    currentTime += processDuration;
+  });
+
+  // Add the final time marker
+  timeline += `${currentTime}`.padStart(unitWidth, " ");
+
+  // Create pre-formatted text blocks for display
+  const asciiElement = document.createElement("pre");
+  asciiElement.className = "ascii-gantt";
+  asciiElement.innerText = asciiChart + "\n" + timeline;
+
+  ganttChart.appendChild(asciiElement);
+}
+        function displayCalculations(results) {
+            const calculationDiv = document.getElementById("calculations");
+            calculationDiv.innerHTML = ""; // Clear previous calculations
+
+            let totalWaitingTime = 0;
+            let totalTurnaroundTime = 0;
+
+            // Turnaround Time Section
+            const turnaroundHeader = document.createElement("h2");
+            turnaroundHeader.innerText = "Turnaround Time Calculations";
+            calculationDiv.appendChild(turnaroundHeader);
+
+            const turnaroundList = document.createElement("div");
+
+            results.forEach((process) => {
+                const turnaroundTime = process.completion_time - process.arrival_time;
+                totalTurnaroundTime += turnaroundTime;
+
+                const turnaroundItem = document.createElement("p");
+                turnaroundItem.innerHTML = `
+          Process P${process.pid}:<br>
+          Turnaround Time = Completion Time (${process.completion_time}) - Arrival Time (${process.arrival_time}) = <b>${turnaroundTime}</b>
+        `;
+                turnaroundList.appendChild(turnaroundItem);
+            });
+
+            calculationDiv.appendChild(turnaroundList);
+
+            // Waiting Time Section
+            const waitingHeader = document.createElement("h2");
+            waitingHeader.innerText = "Waiting Time Calculations";
+            calculationDiv.appendChild(waitingHeader);
+
+            const waitingList = document.createElement("div");
+
+            results.forEach((process) => {
+                const turnaroundTime = process.completion_time - process.arrival_time;
+                const waitingTime = turnaroundTime - process.burst_time;
+                totalWaitingTime += waitingTime;
+
+                const waitingItem = document.createElement("p");
+                waitingItem.innerHTML = `
+          Process P${process.pid}:<br>
+          Waiting Time = Turnaround Time (${turnaroundTime}) - Burst Time (${process.burst_time}) = <b>${waitingTime}</b>
+        `;
+                waitingList.appendChild(waitingItem);
+            });
+
+            calculationDiv.appendChild(waitingList);
+
+            // Averages
+            const averages = document.createElement("p");
+            averages.innerHTML = `
+        <b>Average Turnaround Time</b> = ${(totalTurnaroundTime / results.length).toFixed(2)}
+        <br>
+        <b>Average Waiting Time</b> = ${(totalWaitingTime / results.length).toFixed(2)}
+      `;
+            calculationDiv.appendChild(averages);
+        }
+    </script>
+</body>
+
+</html>
